@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Comunicação Diária - Bonificação</title>
+ </head>
+ <body>
+  <div
+   style="
+    margin: 0;
+    padding: 0;
+    background-color: #f8f9fa;
+    font-family: 'Open Sans', Arial, sans-serif;
+   "
+  >
+   <!-- Main Container -->
+   <table
+    width="100%"
+    border="0"
+    cellpadding="0"
+    cellspacing="0"
+    style="background-color: #f8f9fa"
+   >
+    <tr>
+     <td align="center" valign="top">
+      <!-- Email Body -->
+      <table
+       width="600"
+       border="0"
+       cellpadding="0"
+       cellspacing="0"
+       style="
+        background-color: #ffffff;
+        margin: 20px auto;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+       "
+      >
+       <!-- Header -->
+       <tr>
+        <td style="padding: 30px 40px 20px 40px">
+         <h1 style="margin: 0; font-size: 22px; color: #2c3e50">
+          Olá, {{user["system"]["first_name"]}},
+         </h1>
+         <p
+          style="
+           margin: 15px 0 0 0;
+           font-size: 15px;
+           color: #555555;
+           line-height: 1.6;
+          "
+         >
+          Você está recebendo este e-mail porque a filial
+          <strong
+           >{{event["custom"]["email_bonificacao_diaria_motorista"]["custom"]["filial"]}}</strong
+          >
+          é elegível a participar do Bônus de Suporte de Rua.
+         </p>
+        </td>
+       </tr>
+
+       <!-- Estimated Value Box -->
+       <tr>
+        <td style="padding: 0 40px 20px 40px">
+         <div
+          style="
+           background-color: #f5f9ff;
+           border-left: 4px solid #3d78b8;
+           padding: 20px;
+           border-radius: 4px;
+           margin-bottom: 20px;
+          "
+         >
+          <p style="margin: 0 0 10px 0; font-size: 15px; color: #555555">
+           O valor apresentado abaixo é uma estimativa calculada com base nos
+           serviços realizados em
+           <strong
+            >{{event["custom"]["email_bonificacao_diaria_motorista"]["custom"]["data_abertura"]}}</strong
+           >.
+          </p>
+          <p style="margin: 0; font-size: 15px; color: #555555">
+           Este valor ainda passará por validação, e o pagamento está sujeito ao
+           desempenho da filial e conduta individual.
+          </p>
+         </div>
+        </td>
+       </tr>
+
+       <!-- Performance Section -->
+       <tr>
+        <td style="padding: 0 40px 20px 40px">
+         <h2
+          style="
+           margin: 0 0 15px 0;
+           font-size: 18px;
+           color: #2c3e50;
+           border-bottom: 1px solid #eee;
+           padding-bottom: 10px;
+          "
+         >
+          📊 Seu desempenho em
+          {{event["custom"]["email_bonificacao_diaria_motorista"]["custom"]["data_abertura"]}}:
+         </h2>
+
+         <table
+          width="100%"
+          cellpadding="0"
+          cellspacing="0"
+          style="margin-bottom: 20px"
+         >
+          <tr>
+           <td
+            width="60%"
+            style="
+             padding: 8px 0;
+             border-bottom: 1px solid #eee;
+             font-size: 15px;
+             color: #555555;
+            "
+           >
+            Quantidade de Serviços:
+           </td>
+           <td
+            width="40%"
+            style="
+             padding: 8px 0;
+             border-bottom: 1px solid #eee;
+             font-size: 15px;
+             color: #2c3e50;
+             text-align: right;
+             font-weight: 600;
+            "
+           >
+            {{event["custom"]["email_bonificacao_diaria_motorista"]["custom"]["QtdServicos"]}}
+           </td>
+          </tr>
+          <tr>
+           <td
+            width="60%"
+            style="
+             padding: 8px 0;
+             border-bottom: 1px solid #eee;
+             font-size: 15px;
+             color: #555555;
+            "
+           >
+            Percentual de Recolhimento:
+           </td>
+           <td
+            width="40%"
+            style="
+             padding: 8px 0;
+             border-bottom: 1px solid #eee;
+             font-size: 15px;
+             color: #2c3e50;
+             text-align: right;
+             font-weight: 600;
+            "
+           >
+            {{event["custom"]["email_bonificacao_diaria_motorista"]["custom"]["PercentTroca"]}}
+           </td>
+          </tr>
+          <tr>
+           <td
+            width="60%"
+            style="
+             padding: 8px 0;
+             border-bottom: 1px solid #eee;
+             font-size: 15px;
+             color: #555555;
+            "
+           >
+            Valor Estimado do Bônus:
+           </td>
+           <td
+            width="40%"
+            style="
+             padding: 8px 0;
+             border-bottom: 1px solid #eee;
+             font-size: 15px;
+             color: #27ae60;
+             text-align: right;
+             font-weight: 600;
+            "
+           >
+            R$
+            {{event["custom"]["email_bonificacao_diaria_motorista"]["custom"]["BonusTotal"]}}
+           </td>
+          </tr>
+          <tr>
+           <td
+            width="60%"
+            style="
+             padding: 8px 0;
+             border-bottom: 1px solid #eee;
+             font-size: 15px;
+             color: #555555;
+            "
+           >
+            Passou de 90 km/h:
+           </td>
+           <td
+            width="40%"
+            style="
+             padding: 8px 0;
+             border-bottom: 1px solid #eee;
+             font-size: 15px;
+             color: #e74c3c;
+             text-align: right;
+             font-weight: 600;
+            "
+           >
+            {{event["custom"]["email_bonificacao_diaria_motorista"]["custom"]["Passou90km"]}}
+           </td>
+          </tr>
+          <tr>
+           <td
+            width="60%"
+            style="
+             padding: 8px 0;
+             border-bottom: 1px solid #eee;
+             font-size: 15px;
+             color: #555555;
+            "
+           >
+            Chegou Atrasado:
+           </td>
+           <td
+            width="40%"
+            style="
+             padding: 8px 0;
+             border-bottom: 1px solid #eee;
+             font-size: 15px;
+             color: #e74c3c;
+             text-align: right;
+             font-weight: 600;
+            "
+           >
+            {{event["custom"]["email_bonificacao_diaria_motorista"]["custom"]["ChegouAtrasado"]}}
+           </td>
+          </tr>
+          <tr>
+           <td
+            width="60%"
+            style="padding: 8px 0; font-size: 15px; color: #555555"
+           >
+            Logout Antecipado:
+           </td>
+           <td
+            width="40%"
+            style="
+             padding: 8px 0;
+             font-size: 15px;
+             color: #e74c3c;
+             text-align: right;
+             font-weight: 600;
+            "
+           >
+            {{event["custom"]["email_bonificacao_diaria_motorista"]["custom"]["LogoutAntecipado"]}}
+           </td>
+          </tr>
+         </table>
+        </td>
+       </tr>
+
+       <!-- Bonus Explanation -->
+       <tr>
+        <td style="padding: 0 40px 20px 40px">
+         <h2
+          style="
+           margin: 0 0 15px 0;
+           font-size: 18px;
+           color: #2c3e50;
+           border-bottom: 1px solid #eee;
+           padding-bottom: 10px;
+          "
+         >
+          📘 Entenda o bônus:
+         </h2>
+         <p style="margin: 0 0 15px 0; font-size: 15px; color: #555555">
+          Veja os critérios de recebimento, como funciona o cálculo e demais
+          orientações:
+         </p>
+         <table
+          width="100%"
+          cellpadding="0"
+          cellspacing="0"
+          style="margin-bottom: 20px"
+         >
+          <tr>
+           <td width="50%" style="padding: 0 5px 0 0">
+            <a
+             href="https://bonificacao-ui.mottu.io/?secao=5&type=motorcycle"
+             style="
+              background-color: #3498db;
+              color: #ffffff;
+              text-decoration: none;
+              padding: 10px 15px;
+              border-radius: 4px;
+              font-weight: 600;
+              display: inline-block;
+              font-size: 14px;
+              text-align: center;
+              width: 100%;
+              box-sizing: border-box;
+             "
+             >Para moto</a
+            >
+           </td>
+           <td width="50%" style="padding: 0 0 0 5px">
+            <a
+             href="https://bonificacao-ui.mottu.io/?secao=5&type=car"
+             style="
+              background-color: #3498db;
+              color: #ffffff;
+              text-decoration: none;
+              padding: 10px 15px;
+              border-radius: 4px;
+              font-weight: 600;
+              display: inline-block;
+              font-size: 14px;
+              text-align: center;
+              width: 100%;
+              box-sizing: border-box;
+             "
+             >Para carro</a
+            >
+           </td>
+          </tr>
+         </table>
+        </td>
+       </tr>
+
+       <!-- Important Rules -->
+       <tr>
+        <td style="padding: 0 40px 30px 40px">
+         <div
+          style="
+           background-color: #fff8f8;
+           border-left: 4px solid #e74c3c;
+           padding: 20px;
+           border-radius: 4px;
+          "
+         >
+          <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #c0392b">
+           ⚠️ Regras importantes:
+          </h3>
+
+          <h4 style="margin: 0 0 10px 0; font-size: 15px; color: #2c3e50">
+           Mínimo de serviços para bonificação:
+          </h4>
+          <ul style="margin: 0 0 20px 0; padding-left: 20px; color: #555555">
+           <li style="margin-bottom: 8px; line-height: 1.5">
+            🚗 Carro: 6 serviços
+           </li>
+           <li style="margin-bottom: 8px; line-height: 1.5">
+            🛵 Moto: 5 serviços
+           </li>
+          </ul>
+
+          <h4 style="margin: 0 0 10px 0; font-size: 15px; color: #2c3e50">
+           Penalizações possíveis:
+          </h4>
+          <ul style="margin: 0; padding-left: 20px; color: #555555">
+           <li style="margin-bottom: 8px; line-height: 1.5">
+            Exceder 90 km/h no dia → perda do bônus do dia
+           </li>
+           <li style="margin-bottom: 8px; line-height: 1.5">
+            Atraso no login ou logout antecipado (superiores a 1h) → perda do
+            bônus de maior valor da quinzena
+           </li>
+           <li style="margin-bottom: 8px; line-height: 1.5">
+            Falta injustificada (sem atestado) → perda do bônus da quinzena
+           </li>
+           <li style="margin-bottom: 8px; line-height: 1.5">
+            Outros motivos de desconto: conduta disciplinar, multas, extravio de
+            ferramentas, entre outros
+           </li>
+          </ul>
+         </div>
+        </td>
+       </tr>
+
+       <!-- Footer -->
+       <tr>
+        <td
+         style="
+          padding: 30px 40px;
+          background-color: #f8f9fa;
+          border-radius: 0 0 8px 8px;
+         "
+        >
+         <p
+          style="
+           margin: 0 0 15px 0;
+           font-size: 15px;
+           color: #555555;
+           text-align: center;
+           font-style: italic;
+          "
+         >
+          Obrigado por fazer parte da nossa equipe!
+         </p>
+         <p
+          style="
+           margin: 0 0 20px 0;
+           font-size: 15px;
+           color: #555555;
+           text-align: center;
+          "
+         >
+          Seguimos juntos fazendo a diferença todos os dias 🚀
+         </p>
+         <p
+          style="margin: 0; font-size: 15px; color: #555555; text-align: center"
+         >
+          Atenciosamente,<br /><strong style="color: #2c3e50"
+           >Equipe Mottu</strong
+          >
+         </p>
+        </td>
+       </tr>
+      </table>
+
+      <!-- Final Space -->
+      <table width="100%" border="0" cellpadding="0" cellspacing="0">
+       <tr>
+        <td style="padding: 20px 0; text-align: center">
+         <p style="margin: 0; font-size: 12px; color: #999999">
+          © 2025 Mottu. Todos os direitos reservados.
+         </p>
+        </td>
+       </tr>
+      </table>
+     </td>
+    </tr>
+   </table>
+  </div>
+ </body>
+</html>
