@@ -1,0 +1,399 @@
+config {
+  type: "table",
+  disabled: false,
+  tags: ["cross","daily","servicos_rua"],
+  schema: dataform.projectConfig.vars.servicos_rua_schema,
+  description: `Descrição: Cálculo de pré bonificação para os prestadores do suporte de campo.
+             Atentar-se que existem descontos no bônus e filiais que não estão elegíveis
+            Unidade de negócio: Mottu Aluguel
+            Área: Field Services
+            Criado por: Lucas Araujo
+            Data da ultima atualização do código da tabela: --12/07/2024--
+            Frequência de atualização: Daily 
+            Dados agrupados por: Dia 
+            Fuso horário das datas da tabela: Brazil UTC-03`,
+  bigquery: {
+    labels: {
+      atualizacao: "diariamente",
+      criado_por: "lucasarasil",
+      alterado_por: "lucasarasil",
+      aprovado_por: "gabriel_piergallini",
+      data_ultima_alteracao_github: "2025-05-23-1553",
+      protegida: "false",
+      desativada: "false",
+      modo_atualizacao: "completa",
+    }
+  }
+}
+
+
+WITH Turno_motorista AS (
+  SELECT 
+    data_jornada,
+    usuario_id AS usuarioId, 
+    filial,
+           inicio_jornada,
+           fim_jornada,
+           CASE 
+            WHEN inicio_jornada > fim_jornada
+            THEN 'Noturno'
+            ELSE 'Diurno'
+        END AS turno,
+    modal_veiculo AS modal,
+    motorista
+  FROM ${ref("jornada_suporte")}  
+),
+ServicosWithDates AS (
+    SELECT *, DATE(data_conclusao) AS data_conclusao_date, DATE(data_abertura) AS data_abertura_date
+    FROM ${ref("servicos_dia")}
+    WHERE data_conclusao IS NOT NULL
+),
+
+VelocidadeData AS (
+    SELECT
+        sr.usuarioId,
+        DATE(sr.inicio_data) AS data_abertura,
+        MAX(CASE WHEN sr.velocidade_kmh_max >= 96 THEN 1 ELSE 0 END) AS Passou90km,
+        MAX(CASE WHEN sr.velocidade_kmh_max >= 120 THEN 1 ELSE 0 END) AS Passou120km
+    FROM ${ref("driving_behaviour_servicos_rua")} sr
+    GROUP BY sr.usuarioId, DATE(sr.inicio_data)
+),
+
+FilialMetrics AS (
+    -- métricas aproximadas por filial e dia para avaliação de elegibilidade coletiva
+    SELECT
+    fd.filial AS filial,
+    fd.data_conclusao_date AS data_abertura,
+      COUNT(1) AS total_services,
+      SUM(CASE WHEN TIMESTAMP_DIFF(
+          (CASE WHEN SAFE_CAST(fd.data_conclusao AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(fd.data_conclusao AS TIMESTAMP)
+              WHEN SAFE_CAST(fd.data_conclusao AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(fd.data_conclusao AS DATETIME))
+              WHEN SAFE_CAST(CAST(fd.data_conclusao AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(fd.data_conclusao AS STRING) AS TIMESTAMP)
+              ELSE TIMESTAMP(CONCAT(CAST(DATE(fd.data_conclusao) AS STRING),' 00:00:00')) END),
+          (CASE WHEN SAFE_CAST(fd.data_abertura AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(fd.data_abertura AS TIMESTAMP)
+              WHEN SAFE_CAST(fd.data_abertura AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(fd.data_abertura AS DATETIME))
+              WHEN SAFE_CAST(CAST(fd.data_abertura AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(fd.data_abertura AS STRING) AS TIMESTAMP)
+              ELSE TIMESTAMP(CONCAT(CAST(DATE(fd.data_conclusao) AS STRING),' 00:00:00')) END),
+          MINUTE) < 90 THEN 1 ELSE 0 END) AS services_under_90,
+      SAFE_DIVIDE(SUM(CASE WHEN TIMESTAMP_DIFF(
+          (CASE WHEN SAFE_CAST(fd.data_conclusao AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(fd.data_conclusao AS TIMESTAMP)
+              WHEN SAFE_CAST(fd.data_conclusao AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(fd.data_conclusao AS DATETIME))
+              WHEN SAFE_CAST(CAST(fd.data_conclusao AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(fd.data_conclusao AS STRING) AS TIMESTAMP)
+              ELSE TIMESTAMP(CONCAT(CAST(DATE(fd.data_conclusao) AS STRING),' 00:00:00')) END),
+          (CASE WHEN SAFE_CAST(fd.data_abertura AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(fd.data_abertura AS TIMESTAMP)
+              WHEN SAFE_CAST(fd.data_abertura AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(fd.data_abertura AS DATETIME))
+              WHEN SAFE_CAST(CAST(fd.data_abertura AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(fd.data_abertura AS STRING) AS TIMESTAMP)
+              ELSE TIMESTAMP(CONCAT(CAST(DATE(fd.data_conclusao) AS STRING),' 00:00:00')) END),
+          MINUTE) < 90 THEN 1 ELSE 0 END), COUNT(1)) AS pct_under_90,
+    -- providers count baseado na jornada do dia (via LEFT JOIN abaixo)
+    COUNT(DISTINCT js.usuario_id) AS providers_count,
+        -- placeholder para taxa de inadimplência: pode precisar ser refinada conforme definição de 'apropriação'
+        SAFE_DIVIDE(SUM(CASE WHEN grupo_servico = 2 AND situacao = 3 THEN 1 ELSE 0 END), NULLIF(COUNT(1),0)) AS approx_inadimplencia_rate
+    FROM ServicosWithDates fd
+    LEFT JOIN ${ref("jornada_suporte")} js
+        ON js.filial = fd.filial AND js.data_jornada = fd.data_conclusao_date
+    WHERE fd.data_conclusao IS NOT NULL
+    GROUP BY fd.filial, fd.data_conclusao_date
+),
+
+DriverPenalties AS (
+    -- flags per motorista/dia: chegou atrasado (primeiro atendimento depois do inicio_jornada) e logout antecipado (ultimo atendimento antes do fim_jornada)
+    SELECT
+        tm.usuarioId,
+        tm.data_jornada,
+        CASE WHEN (
+            (CASE WHEN SAFE_CAST(MIN(fd.data_abertura) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(MIN(fd.data_abertura) AS TIMESTAMP)
+                  WHEN SAFE_CAST(MIN(fd.data_abertura) AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(MIN(fd.data_abertura) AS DATETIME))
+                  WHEN SAFE_CAST(CAST(MIN(fd.data_abertura) AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(MIN(fd.data_abertura) AS STRING) AS TIMESTAMP)
+                  ELSE TIMESTAMP(CONCAT(CAST(tm.data_jornada AS STRING),' 00:00:00')) END)
+            > TIMESTAMP(DATETIME(tm.data_jornada, tm.inicio_jornada))
+        ) THEN 1 ELSE 0 END AS ChegouAtrasado,
+        CASE WHEN (
+            (CASE WHEN SAFE_CAST(MAX(fd.data_conclusao) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(MAX(fd.data_conclusao) AS TIMESTAMP)
+                  WHEN SAFE_CAST(MAX(fd.data_conclusao) AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(MAX(fd.data_conclusao) AS DATETIME))
+                  WHEN SAFE_CAST(CAST(MAX(fd.data_conclusao) AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(MAX(fd.data_conclusao) AS STRING) AS TIMESTAMP)
+                  ELSE TIMESTAMP(CONCAT(CAST(tm.data_jornada AS STRING),' 00:00:00')) END)
+            < TIMESTAMP(DATETIME(tm.data_jornada, tm.fim_jornada))
+        ) THEN 1 ELSE 0 END AS LogoutAntecipado
+    FROM ServicosWithDates fd
+    JOIN Turno_motorista tm
+      ON fd.usuario_suporte_id = tm.usuarioId
+      AND fd.data_conclusao_date = tm.data_jornada
+    GROUP BY tm.usuarioId, tm.data_jornada
+),
+
+BaseData_inicial AS (
+    SELECT
+        tm.filial,
+        tm.turno,
+        tm.usuarioId,
+        tm.motorista,
+        IF(
+            COUNTIF(fs.modal_veiculo = 'CARRO') > 1,
+            'CARRO',
+            MAX(fs.modal_veiculo))
+        
+       -- fs.modal_veiculo
+         as modal,
+        SUM(
+        CASE 
+            WHEN fs.grupo_servico = 1 THEN 1
+            WHEN fs.grupo_servico = 2 AND fs.servico_tipo_id = 85 THEN 0.5
+            WHEN fs.grupo_servico = 2 THEN 1
+            ELSE 0 
+        END
+        ) AS QtdServicos,
+        COUNT(DISTINCT CASE WHEN fs.troca_realizada = 1 THEN fs.servico_id END) AS QtdTrocas,
+        SUM(
+            CASE 
+                WHEN fs.grupo_servico = 2 AND fs.situacao = 3 AND fs.servico_tipo_id = 85 THEN 0.5
+                WHEN fs.grupo_servico = 2 AND fs.situacao = 3 THEN 1
+                ELSE 0 
+            END
+        ) AS QtdRecolhimentosInadimplencia,
+        COUNT(DISTINCT CASE WHEN fs.grupo_servico = 2 AND fs.situacao = 4 THEN fs.servico_id END) AS QtdRecolhimentosCancelados,
+        COUNT(DISTINCT CASE WHEN fs.grupo_servico = 1 AND fs.recolhimento_evento = 1 THEN fs.servico_id END) AS QtdRecolhimentosSuporte,
+        COUNT(DISTINCT CASE WHEN fs.servico_tipo_id IN (53,35,36,5,29) THEN fs.servico_id END) AS QtdProvavelTroca,
+        -- Ajuste para turno noturno (uso de conversão segura para evitar erros quando campos são TIME)
+        (SELECT
+            DATE(
+                CASE
+                    WHEN tm.turno = 'Noturno' AND EXTRACT(HOUR FROM (
+                        CASE
+                            WHEN SAFE_CAST(fs.data_conclusao AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(fs.data_conclusao AS TIMESTAMP)
+                            WHEN SAFE_CAST(fs.data_conclusao AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(fs.data_conclusao AS DATETIME))
+                            WHEN SAFE_CAST(CAST(fs.data_conclusao AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(fs.data_conclusao AS STRING) AS TIMESTAMP)
+                            ELSE TIMESTAMP(CONCAT(CAST(DATE(fs.data_abertura) AS STRING),' 00:00:00'))
+                        END
+                    )) < 10
+                        THEN DATE_SUB(DATE(
+                            CASE
+                                WHEN SAFE_CAST(fs.data_conclusao AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(fs.data_conclusao AS TIMESTAMP)
+                                WHEN SAFE_CAST(fs.data_conclusao AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(fs.data_conclusao AS DATETIME))
+                                WHEN SAFE_CAST(CAST(fs.data_conclusao AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(fs.data_conclusao AS STRING) AS TIMESTAMP)
+                                ELSE TIMESTAMP(CONCAT(CAST(DATE(fs.data_abertura) AS STRING),' 00:00:00'))
+                            END
+                        ), INTERVAL 1 DAY)
+                    ELSE DATE(
+                        CASE
+                            WHEN SAFE_CAST(fs.data_conclusao AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(fs.data_conclusao AS TIMESTAMP)
+                            WHEN SAFE_CAST(fs.data_conclusao AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(fs.data_conclusao AS DATETIME))
+                            WHEN SAFE_CAST(CAST(fs.data_conclusao AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(fs.data_conclusao AS STRING) AS TIMESTAMP)
+                            ELSE TIMESTAMP(CONCAT(CAST(DATE(fs.data_abertura) AS STRING),' 00:00:00'))
+                        END
+                    )
+                END
+            )
+        ) AS data_abertura_ajustado,
+        AVG(TIMESTAMP_DIFF(
+            (CASE WHEN SAFE_CAST(data_conclusao AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(data_conclusao AS TIMESTAMP)
+                  WHEN SAFE_CAST(data_conclusao AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(data_conclusao AS DATETIME))
+                  WHEN SAFE_CAST(CAST(data_conclusao AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(data_conclusao AS STRING) AS TIMESTAMP)
+                  ELSE TIMESTAMP(CONCAT(CAST(DATE(data_abertura) AS STRING),' 00:00:00')) END),
+            (CASE WHEN SAFE_CAST(data_abertura AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(data_abertura AS TIMESTAMP)
+                  WHEN SAFE_CAST(data_abertura AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(data_abertura AS DATETIME))
+                  WHEN SAFE_CAST(CAST(data_abertura AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(data_abertura AS STRING) AS TIMESTAMP)
+                  ELSE TIMESTAMP(CONCAT(CAST(DATE(data_abertura) AS STRING),' 00:00:00')) END),
+            MINUTE
+        )) AS TMA,
+        AVG(TIMESTAMP_DIFF(
+            (CASE WHEN SAFE_CAST(data_conclusao AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(data_conclusao AS TIMESTAMP)
+                  WHEN SAFE_CAST(data_conclusao AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(data_conclusao AS DATETIME))
+                  WHEN SAFE_CAST(CAST(data_conclusao AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(data_conclusao AS STRING) AS TIMESTAMP)
+                  ELSE TIMESTAMP(CONCAT(CAST(DATE(data_abertura) AS STRING),' 00:00:00')) END),
+            (CASE WHEN SAFE_CAST(data_atendimento AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(data_atendimento AS TIMESTAMP)
+                  WHEN SAFE_CAST(data_atendimento AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(data_atendimento AS DATETIME))
+                  WHEN SAFE_CAST(CAST(data_atendimento AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(data_atendimento AS STRING) AS TIMESTAMP)
+                  ELSE TIMESTAMP(CONCAT(CAST(DATE(data_abertura) AS STRING),' 00:00:00')) END),
+            MINUTE
+        )) AS TM_atendimento,
+        AVG(TIMESTAMP_DIFF(
+            (CASE WHEN SAFE_CAST(data_atendimento AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(data_atendimento AS TIMESTAMP)
+                  WHEN SAFE_CAST(data_atendimento AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(data_atendimento AS DATETIME))
+                  WHEN SAFE_CAST(CAST(data_atendimento AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(data_atendimento AS STRING) AS TIMESTAMP)
+                  ELSE TIMESTAMP(CONCAT(CAST(DATE(data_abertura) AS STRING),' 00:00:00')) END),
+            (CASE WHEN SAFE_CAST(data_deslocamento AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(data_deslocamento AS TIMESTAMP)
+                  WHEN SAFE_CAST(data_deslocamento AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(data_deslocamento AS DATETIME))
+                  WHEN SAFE_CAST(CAST(data_deslocamento AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(data_deslocamento AS STRING) AS TIMESTAMP)
+                  ELSE TIMESTAMP(CONCAT(CAST(DATE(data_abertura) AS STRING),' 00:00:00')) END),
+            MINUTE
+        )) AS TM_deslocamento,
+        AVG(TIMESTAMP_DIFF(
+            (CASE WHEN SAFE_CAST(data_deslocamento AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(data_deslocamento AS TIMESTAMP)
+                  WHEN SAFE_CAST(data_deslocamento AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(data_deslocamento AS DATETIME))
+                  WHEN SAFE_CAST(CAST(data_deslocamento AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(data_deslocamento AS STRING) AS TIMESTAMP)
+                  ELSE TIMESTAMP(CONCAT(CAST(DATE(data_abertura) AS STRING),' 00:00:00')) END),
+            (CASE WHEN SAFE_CAST(data_abertura AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(data_abertura AS TIMESTAMP)
+                  WHEN SAFE_CAST(data_abertura AS DATETIME) IS NOT NULL THEN TIMESTAMP(SAFE_CAST(data_abertura AS DATETIME))
+                  WHEN SAFE_CAST(CAST(data_abertura AS STRING) AS TIMESTAMP) IS NOT NULL THEN SAFE_CAST(CAST(data_abertura AS STRING) AS TIMESTAMP)
+                  ELSE TIMESTAMP(CONCAT(CAST(DATE(data_abertura) AS STRING),' 00:00:00')) END),
+            MINUTE
+        )) AS TM_aceito
+    FROM 
+        ${ref("servicos_dia")} fs
+    LEFT JOIN 
+        Turno_motorista tm
+        ON fs.usuario_suporte_id = tm.usuarioId and date(data_abertura) = data_jornada
+    WHERE
+        fs.situacao IN (3,4,5)
+    GROUP BY 
+        data_abertura_ajustado,
+        turno,
+        fs.modal_veiculo,
+        filial,
+        motorista, usuarioId
+),
+
+BaseData AS (
+SELECT 
+ bd.data_abertura_ajustado, turno, filial, motorista, usuarioId,
+ SUM(QtdServicos) AS QtdServicos, SUM(QtdProvavelTroca) AS QtdProvavelTroca, SUM(QtdRecolhimentosCancelados) AS QtdRecolhimentosCancelados,
+ SUM(QtdTrocas) AS QtdTrocas, SUM(QtdRecolhimentosInadimplencia) AS QtdRecolhimentosInadimplencia, SUM(QtdRecolhimentosSuporte) AS QtdRecolhimentosSuporte,
+  IF(
+    EXISTS (
+      SELECT 1
+      FROM BaseData_inicial b2
+      WHERE b2.usuarioId = bd.usuarioId
+        AND b2.data_abertura_ajustado = bd.data_abertura_ajustado
+        AND b2.modal = 'CARRO'
+    ),
+    'CARRO',
+    'MOTO'
+  ) AS modal,
+
+SUM(QtdServicos * TMA) / NULLIF(SUM(QtdServicos), 0) AS TMA,
+  SUM(QtdServicos * TM_atendimento) / NULLIF(SUM(QtdServicos), 0) AS TM_atendimento,
+  SUM(QtdServicos * TM_deslocamento) / NULLIF(SUM(QtdServicos), 0) AS TM_deslocamento,
+  SUM(QtdServicos * TM_aceito) / NULLIF(SUM(QtdServicos), 0) AS TM_aceito
+FROM
+    BaseData_inicial bd
+GROUP BY 
+        data_abertura_ajustado,
+        turno,
+        modal,
+        filial,
+        motorista, usuarioId
+        -- QtdServicos, QtdProvavelTroca, QtdRecolhimentosCancelados,
+        -- QtdTrocas, QtdRecolhimentosInadimplencia, QtdRecolhimentosSuporte,
+        --TMA, TM_atendimento, TM_deslocamento, TM_aceito
+),
+
+CalculatedBonuses AS (
+    SELECT
+        TMA, TM_atendimento, TM_deslocamento, TM_aceito,
+        Data_abertura_ajustado,
+        turno,
+        modal,
+        usuarioId,
+        filial,
+        motorista,
+        QtdServicos,
+        QtdTrocas,
+        QtdRecolhimentosInadimplencia,
+        QtdRecolhimentosCancelados,
+        QtdRecolhimentosSuporte,
+        QtdProvavelTroca,
+
+        CASE
+            WHEN modal = 'CARRO' AND (QtdServicos - QtdRecolhimentosCancelados + (QtdRecolhimentosCancelados * 2)) >= 6 THEN 40
+            WHEN modal = 'MOTO' AND (QtdServicos - QtdProvavelTroca + (QtdProvavelTroca * 2)) >= 5 THEN 40
+            ELSE 0
+        END AS BonusMetaBatida,
+
+        CASE
+            WHEN modal = 'CARRO' AND (QtdServicos - QtdRecolhimentosCancelados + (QtdRecolhimentosCancelados * 2)) > 6 THEN 
+                (QtdServicos - QtdRecolhimentosCancelados + (QtdRecolhimentosCancelados * 2) - 6) * 15
+            ELSE 0
+        END AS BonusAdicionalCarro,
+
+        CASE
+            WHEN modal = 'MOTO' AND (QtdServicos - QtdProvavelTroca + (QtdProvavelTroca * 2)) > 5 THEN 
+                (QtdServicos - QtdProvavelTroca + (QtdProvavelTroca * 2) - 5) * 15
+            ELSE 0
+        END AS BonusAdicionalMoto
+    FROM 
+        BaseData
+),
+
+CTE_Calculations AS (
+    SELECT
+        TMA, TM_atendimento, TM_deslocamento, TM_aceito,
+        Data_abertura_ajustado,
+        turno,
+        modal,
+        usuarioId,
+        filial,
+        motorista,
+        QtdServicos,
+        QtdTrocas,
+        QtdRecolhimentosInadimplencia,
+        QtdRecolhimentosCancelados,
+        QtdRecolhimentosSuporte,
+        QtdProvavelTroca,
+        BonusMetaBatida,
+        (BonusAdicionalCarro + BonusAdicionalMoto) AS BonusAdicional,
+        
+        -- Calculando o percentual de trocas para CARRO
+        CASE
+            WHEN modal = 'CARRO' THEN 
+                (QtdTrocas + QtdRecolhimentosSuporte) / NULLIF((QtdServicos - QtdRecolhimentosInadimplencia - QtdRecolhimentosCancelados),0)
+            ELSE 0
+        END AS PercentualTroca
+    FROM 
+        CalculatedBonuses
+)
+
+SELECT
+    Data_abertura_ajustado AS data_abertura,
+    turno,
+    modal,
+    c.usuarioId,
+    c.filial AS filial,
+    INITCAP(LOWER(motorista)) AS motorista,
+    CASE WHEN modal = 'MOTO' then 0 else vd.Passou90km END AS Passou90km,
+    vd.Passou120km AS Passou120km,
+    QtdServicos,
+    QtdTrocas,
+    QtdRecolhimentosInadimplencia,
+    QtdRecolhimentosCancelados,
+    QtdRecolhimentosSuporte,
+    QtdProvavelTroca,
+    BonusMetaBatida,
+    BonusAdicional,
+    ROUND(PercentualTroca,2) AS PercentTroca,
+
+    -- Calculando o bônus total
+    CASE
+        WHEN modal = 'CARRO' THEN 
+            (BonusMetaBatida + BonusAdicional) * 
+            CASE
+                WHEN PercentualTroca < 0.15 THEN 2.50
+                -- WHEN PercentualTroca < 0.20 THEN 2.00
+                WHEN PercentualTroca < 0.30 THEN 2.00
+                -- WHEN PercentualTroca < 0.40 THEN 1.50
+                ELSE 1
+            END
+        WHEN modal = 'MOTO' THEN 
+            (BonusMetaBatida + BonusAdicional)
+    END AS BonusTotal,
+    TMA, TM_atendimento, TM_deslocamento, TM_aceito,
+
+    dp.ChegouAtrasado, dp.LogoutAntecipado,
+    fm.providers_count, fm.pct_under_90, fm.approx_inadimplencia_rate,
+    CONCAT('https://bonificacao-ui.mottu.io/?type=', LOWER(c.modal), '&secao=1&data=', CAST(DATE(c.data_abertura_ajustado) AS STRING), '&usuario=', CAST(c.usuarioId AS STRING)) AS deeplink
+
+FROM 
+    CTE_Calculations c
+    LEFT JOIN
+        VelocidadeData vd
+        ON c.usuarioId = vd.usuarioId AND DATE(c.data_abertura_ajustado) = vd.data_abertura
+        LEFT JOIN
+            DriverPenalties dp
+            ON c.usuarioId = dp.usuarioId AND DATE(c.data_abertura_ajustado) = dp.data_jornada
+        LEFT JOIN
+            FilialMetrics fm
+            ON c.filial = fm.filial AND DATE(c.data_abertura_ajustado) = fm.data_abertura
+WHERE
+    c.usuarioId NOT IN (2149427, 766391, 427146, 213830, 621372, 776152) --AND c.usuarioId = 1636860
+ORDER BY 
+    Data_abertura_ajustado DESC

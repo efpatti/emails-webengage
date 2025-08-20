@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard CNH - Mottu (Lógica Corrigida)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 p-6">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-2xl font-bold text-[#1A1A1A] mb-8">🚀 Status de Documentação - Mottu</h1>
+
+    <!-- Gráfico 1: Envio (cumprimento da tarefa) -->
+    <div class="bg-white p-6 rounded-xl shadow-md mb-8">
+      <h2 class="font-semibold text-lg mb-4 text-[#1A1A1A]">Envio de Documentos</h2>
+      <div class="flex items-center justify-between">
+        <!-- Rosquinha -->
+        <div class="w-48 h-48 relative">
+          <svg viewBox="0 0 36 36" class="block">
+            <!-- Fundo cinza -->
+            <path d="M18 2.0845
+              a 15.9155 15.9155 0 0 1 0 31.831
+              a 15.9155 15.9155 0 0 1 0 -31.831"
+              fill="none" stroke="#E5E7EB" stroke-width="3.5"/>
+            <!-- Verde (enviados) -->
+            <path d="M18 2.0845
+              a 15.9155 15.9155 0 0 1 0 31.831
+              a 15.9155 15.9155 0 0 1 0 -31.831"
+              fill="none" stroke="#00C853" stroke-width="3.5"
+              stroke-dasharray="45, 55" stroke-linecap="round"/>
+            <!-- Texto central -->
+            <text x="18" y="20" text-anchor="middle" font-size="5" fill="#1A1A1A" font-weight="bold">45%</text>
+            <text x="18" y="24" text-anchor="middle" font-size="3" fill="#6B7280">Enviados</text>
+          </svg>
+        </div>
+        <!-- Legenda -->
+        <div class="space-y-4">
+          <div class="flex items-center">
+            <div class="w-4 h-4 rounded-full bg-[#00C853] mr-2"></div>
+            <span class="font-medium">90 Enviados</span>
+          </div>
+          <div class="flex items-center">
+            <div class="w-4 h-4 rounded-full bg-[#E5E7EB] mr-2"></div>
+            <span class="text-gray-600">110 Não enviados</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gráfico 2: Status (resultado da análise) -->
+    <div class="bg-white p-6 rounded-xl shadow-md">
+      <h2 class="font-semibold text-lg mb-4 text-[#1A1A1A]">Status dos Documentos Enviados</h2>
+      <div class="flex items-center">
+        <!-- Barras empilhadas -->
+        <div class="flex-1 space-y-4">
+          <div>
+            <p class="text-sm font-medium mb-1">Solicitação <span class="text-gray-500">(10)</span></p>
+            <div class="w-full bg-gray-200 rounded-full h-3">
+              <div class="bg-[#FFC107] h-3 rounded-full" style="width: 11%"></div>
+            </div>
+          </div>
+          <div>
+            <p class="text-sm font-medium mb-1">Aprovados <span class="text-gray-500">(60)</span></p>
+            <div class="w-full bg-gray-200 rounded-full h-3">
+              <div class="bg-[#00C853] h-3 rounded-full" style="width: 67%"></div>
+            </div>
+          </div>
+          <div>
+            <p class="text-sm font-medium mb-1">Reprovados <span class="text-gray-500">(20)</span></p>
+            <div class="w-full bg-gray-200 rounded-full h-3">
+              <div class="bg-[#F44336] h-3 rounded-full" style="width: 22%"></div>
+            </div>
+          </div>
+        </div>
+        <!-- Mini donut para proporção -->
+        <div class="ml-8 w-32 h-32">
+          <svg viewBox="0 0 36 36">
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              fill="none" stroke="#FFC107" stroke-width="2" stroke-dasharray="11, 89"/>
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              fill="none" stroke="#00C853" stroke-width="2" stroke-dasharray="67, 33" stroke-dashoffset="-11"/>
+            <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              fill="none" stroke="#F44336" stroke-width="2" stroke-dasharray="22, 78" stroke-dashoffset="-78"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
