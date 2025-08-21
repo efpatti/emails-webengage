@@ -126,7 +126,7 @@ BaseData_inicial AS (
     SELECT
         tm.filial,
         tm.turno,
-        tm.usuarioId,
+        tm.usuarioId,zz
         tm.motorista,
         IF(
             COUNTIF(fs.modal_veiculo = 'CARRO') > 1,
